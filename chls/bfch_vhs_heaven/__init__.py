@@ -1,6 +1,7 @@
-from chanutils import get_doc, select_all, select_one
-from chanutils import get_attr, get_text, get_text_content
+from chanutils import get_doc, select_all, select_one, get_attr, get_text
 from playitem import PlayItem, PlayItemList, MoreEpisodesAction
+
+_SEARCH_URL = 'http://woodytv.esy.es/'
 
 _FEEDLIST = [
   {'title':'Popular', 'url':'http://woodytv.esy.es/'},
@@ -17,72 +18,57 @@ _FEEDLIST = [
   {'title':'thriller', 'url':'http://woodytv.esy.es/category/3/thriller'},
   {'title':'drama', 'url':'http://woodytv.esy.es/category/2/drama'},
 ]
-
-_SHOWLIST = []
-
 def name():
-  return 'vhsheaven'
+  return 'http://woodytv.esy.es/'
 
 def image():
   return 'icon.png'
 
 def description():
-   return "vhsheaven Player Channel (<a target='_blank' href='http://woodytv.esy.es/'>http://woodytv.esy.es/</a>). Geo-restricted to UK."
+  return "vhsheaven (<a target='_blank' href='http://www.bbc.co.uk/iplayer'>http://www.bbc.co.uk/iplayer</a>). Geo-restricted to UK."
 
 def feedlist():
   return _FEEDLIST
 
 def feed(idx):
-  url = _FEEDLIST[idx]['url']
-  doc = get_doc(url)
-  rtree = select_all(doc, "a.complex-link")
-  results = PlayItemList()
-  for l in rtree:
-    url = get_attr(l, 'href')
-    el = select_one(l, '.tout__title')
-    if el is None:
-      continue
-    title = get_text(el)
-    el = select_one(l, 'img.fluid-media__media')
-    img = get_attr(el, 'src')
-    el = select_one(l, 'p.tout__meta')
-    subtitle = get_text_content(el)
-    if subtitle == 'No episodes available':
-      continue    
-    item = PlayItem(title, img, url, subtitle)
-    if subtitle != '1 episode':
-      item.add_action(MoreEpisodesAction(url, title))
-    results.add(item)
-  if idx == 0:
-    global _SHOWLIST
-    _SHOWLIST = results
-  return results
+  doc = get_doc(_FEEDLIST[idx]['url'])
+  return _extract(doc)
 
 def search(q):
-  results = PlayItemList()
-  items = _SHOWLIST.to_list()
-  for i in items:
-    title = i.title 
-    if q.lower() in title.lower():
-      results.add(i)
-  return results
+  doc = get_doc(_SEARCH_URL, params = { 'q':q })
+  return _extract(doc)
 
 def showmore(link):
   doc = get_doc(link)
-  rtree = select_all(doc, "a.complex-link")
+  return _extract(doc)
+
+def _extract(doc):
+  rtree = select_all(doc, 'li.list-item')
   results = PlayItemList()
   for l in rtree:
-    url = get_attr(l, 'href')
-    el = select_one(l, 'img.fluid-media__media')
-    img = get_attr(el, 'src')
-    el = select_one(l, 'h3')
-    title = get_text(el)
-    el = select_one(l, 'time')
-    subtitle = ""
-    if el is not None and el.text is not None:
-      subtitle = get_text(el)
-    el = select_one(l, 'p.tout__summary')
-    synopsis = get_text(el)
+    a = select_one(l, 'a')
+    url = get_attr(a, 'href')
+    if url is None or not url.startswith('/iplayer'):
+      continue
+    url = "http://woodytv.esy.es/" + url
+
+    pdiv = select_one(l, 'div.primary')
+    idiv = select_one(pdiv, 'div.r-image')
+    if idiv is None:
+      idiv = select_one(pdiv, 'div.rs-image')
+      idiv = select_one(idiv, 'source')
+      img = get_attr(idiv, 'srcset')
+    else:
+      img = get_attr(idiv, 'data-ip-src')
+
+    sdiv = select_one(l, 'div.secondary')
+    title = get_text(select_one(sdiv, 'div.title'))
+    subtitle = get_text(select_one(sdiv, 'div.subtitle'))
+    synopsis = get_text(select_one(sdiv, 'p.synopsis'))
     item = PlayItem(title, img, url, subtitle, synopsis)
+    a = select_one(l, 'a.view-more-container')
+    if a is not None:
+      link = "http://woodytv.esy.es/" + a.get('href')
+      item.add_action(MoreEpisodesAction(link, title))
     results.add(item)
   return results
